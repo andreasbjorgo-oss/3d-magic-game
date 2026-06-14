@@ -160,7 +160,6 @@ canvas {
 // Scene setup
 let scene = new THREE.Scene();
 scene.background = new THREE.Color(0x111122);
-scene.fog = new THREE.Fog(0x111122, 100, 200);
 
 let camera = new THREE.PerspectiveCamera(60, window.innerWidth/window.innerHeight, 0.1, 1000);
 camera.position.y = 5;
@@ -172,11 +171,11 @@ renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
 document.getElementById('gameContainer').appendChild(renderer.domElement);
 
 // Lighting
-let light = new THREE.DirectionalLight(0xffffff, 0.8);
+let light = new THREE.DirectionalLight(0xffffff, 1.0);
 light.position.set(20, 30, 20);
 scene.add(light);
 
-let ambientLight = new THREE.AmbientLight(0x404040, 0.6);
+let ambientLight = new THREE.AmbientLight(0x666666, 0.8);
 scene.add(ambientLight);
 
 // Ground
@@ -197,13 +196,13 @@ scene.add(playerGroup);
 
 let playerBody = new THREE.Mesh(
     new THREE.CylinderGeometry(0.4, 0.4, 1.5, 16),
-    new THREE.MeshPhongMaterial({color: 0x00ffff})
+    new THREE.MeshPhongMaterial({color: 0x00ffff, emissive: 0x003333})
 );
 playerGroup.add(playerBody);
 
 let playerHead = new THREE.Mesh(
     new THREE.SphereGeometry(0.35, 16, 16),
-    new THREE.MeshPhongMaterial({color: 0x00ffff})
+    new THREE.MeshPhongMaterial({color: 0x00ffff, emissive: 0x003333})
 );
 playerHead.position.y = 1.2;
 playerGroup.add(playerHead);
@@ -231,13 +230,15 @@ let selectedSpell = 'FIRE';
 let spellCooldown = 0;
 
 const SPELL_TYPES = {
-    FIRE: { color: 0xff5500, speed: 0.4, damage: 20, range: 35, size: 0.3, name: 'ILDMAGI' },
-    FROST: { color: 0x00aaff, speed: 0.3, damage: 15, range: 30, size: 0.25, freezeTime: 100, name: 'FROSTMAGI' },
-    LIGHTNING: { color: 0xffff00, speed: 0.5, damage: 30, range: 45, size: 0.2, name: 'LYNNMAGI' }
+    FIRE: { color: 0xff5500, speed: 0.5, damage: 20, range: 35, size: 0.5, name: 'ILDMAGI', emissive: 0xff8800 },
+    FROST: { color: 0x00aaff, speed: 0.4, damage: 15, range: 30, size: 0.5, freezeTime: 100, name: 'FROSTMAGI', emissive: 0x00ccff },
+    LIGHTNING: { color: 0xffff00, speed: 0.6, damage: 30, range: 45, size: 0.45, name: 'LYNNMAGI', emissive: 0xffff00 }
 };
 
 let spells = [];
 let enemies = [];
+
+console.log("Game initialized");
 
 // Enemy class
 class Enemy {
@@ -248,14 +249,14 @@ class Enemy {
         this.frozen = 0;
         
         let geo = new THREE.CylinderGeometry(0.4, 0.4, 1.2, 12);
-        let mat = new THREE.MeshPhongMaterial({color: 0xff3333});
+        let mat = new THREE.MeshPhongMaterial({color: 0xff3333, emissive: 0x660000});
         this.mesh = new THREE.Mesh(geo, mat);
         this.mesh.position.set(x, 0.6, z);
         scene.add(this.mesh);
         
         let head = new THREE.Mesh(
             new THREE.SphereGeometry(0.3, 12, 12),
-            new THREE.MeshPhongMaterial({color: 0xff1111})
+            new THREE.MeshPhongMaterial({color: 0xff1111, emissive: 0x550000})
         );
         head.position.y = 1;
         this.mesh.add(head);
@@ -307,15 +308,26 @@ function castSpell(dirX, dirZ) {
     if (spellCooldown > 0) return;
     
     let spellData = SPELL_TYPES[selectedSpell];
+    
+    // Create spell with MUCH LARGER size so it's visible
     let spell = new THREE.Mesh(
-        new THREE.SphereGeometry(spellData.size, 8, 8),
-        new THREE.MeshPhongMaterial({color: spellData.color, emissive: spellData.color})
+        new THREE.SphereGeometry(spellData.size, 16, 16),
+        new THREE.MeshPhongMaterial({
+            color: spellData.color, 
+            emissive: spellData.emissive,
+            wireframe: false
+        })
     );
     
     spell.position.set(playerGroup.position.x, playerGroup.position.y + 0.5, playerGroup.position.z);
     
     let dist = Math.sqrt(dirX*dirX + dirZ*dirZ);
-    spell.velocity = new THREE.Vector3(dirX / dist, 0, dirZ / dist).multiplyScalar(spellData.speed);
+    if (dist > 0) {
+        spell.velocity = new THREE.Vector3(dirX / dist, 0, dirZ / dist).multiplyScalar(spellData.speed);
+    } else {
+        spell.velocity = new THREE.Vector3(0, 0, -spellData.speed);
+    }
+    
     spell.type = selectedSpell;
     spell.damage = spellData.damage;
     spell.range = spellData.range;
@@ -324,14 +336,18 @@ function castSpell(dirX, dirZ) {
     scene.add(spell);
     spells.push(spell);
     spellCooldown = 40;
+    
+    console.log("Spell cast:", selectedSpell, "Position:", spell.position, "Velocity:", spell.velocity);
 }
 
 function updateGloveColor() {
     let colors = { FIRE: 0xff5500, FROST: 0x00aaff, LIGHTNING: 0xffff00 };
+    let emissives = { FIRE: 0xff8800, FROST: 0x00ccff, LIGHTNING: 0xffff00 };
+    
     leftGlove.material.color.set(colors[selectedSpell]);
-    leftGlove.material.emissive.set(colors[selectedSpell]);
+    leftGlove.material.emissive.set(emissives[selectedSpell]);
     rightGlove.material.color.set(colors[selectedSpell]);
-    rightGlove.material.emissive.set(colors[selectedSpell]);
+    rightGlove.material.emissive.set(emissives[selectedSpell]);
 }
 
 // Touch controls
@@ -359,9 +375,10 @@ document.addEventListener('touchmove', (e) => {
 });
 
 document.addEventListener('touchend', (e) => {
-    if (Date.now() - touchStartTime < 150) {
+    if (Date.now() - touchStartTime < 200) {
         let dirX = e.changedTouches[0].clientX - window.innerWidth/2;
         let dirZ = e.changedTouches[0].clientY - window.innerHeight/2;
+        console.log("Touch cast spell. Direction:", dirX, dirZ);
         castSpell(dirX, dirZ);
     }
 });
