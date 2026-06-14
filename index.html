@@ -1,0 +1,602 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>3D Magic Gloves Game</title>
+<style>
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body {
+    width: 100vw;
+    height: 100vh;
+    overflow: hidden;
+    font-family: Arial, sans-serif;
+    background: #111122;
+    touch-action: none;
+}
+
+canvas {
+    display: block;
+    width: 100%;
+    height: 100%;
+}
+
+#ui {
+    position: fixed;
+    top: 10px;
+    left: 10px;
+    color: #00ffff;
+    font-size: 18px;
+    z-index: 100;
+    font-weight: bold;
+    text-shadow: 0 0 10px #00ffff;
+}
+
+#healthBar {
+    width: 150px;
+    height: 20px;
+    border: 2px solid #00ffff;
+    background: #111;
+    margin-top: 5px;
+    border-radius: 5px;
+    overflow: hidden;
+}
+
+#health {
+    height: 100%;
+    background: linear-gradient(90deg, #00ff00, #ffff00);
+    width: 100%;
+    transition: width 0.2s;
+}
+
+#spellCooldown {
+    margin-top: 10px;
+    font-size: 14px;
+    color: #ffaa00;
+}
+
+#score {
+    position: fixed;
+    top: 10px;
+    right: 10px;
+    color: #ffff00;
+    font-size: 20px;
+    z-index: 100;
+    text-shadow: 0 0 10px #ffff00;
+}
+
+#controls {
+    position: fixed;
+    bottom: 20px;
+    left: 50%;
+    transform: translateX(-50%);
+    color: #00ffff;
+    font-size: 14px;
+    text-align: center;
+    z-index: 100;
+    opacity: 0.7;
+}
+
+#spellIndicator {
+    position: fixed;
+    bottom: 100px;
+    left: 50%;
+    transform: translateX(-50%);
+    color: #ffaa00;
+    font-size: 16px;
+    text-align: center;
+    z-index: 100;
+}
+
+#gameOver {
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    background: rgba(0, 0, 0, 0.9);
+    color: #ff0000;
+    padding: 30px;
+    border-radius: 10px;
+    text-align: center;
+    z-index: 200;
+    display: none;
+    border: 2px solid #ff0000;
+}
+
+#gameOver h1 {
+    font-size: 32px;
+    margin-bottom: 20px;
+}
+
+#gameOver p {
+    font-size: 18px;
+    margin: 10px 0;
+    color: #ffff00;
+}
+
+#gameOver button {
+    margin-top: 20px;
+    padding: 10px 20px;
+    font-size: 16px;
+    background: #00ffff;
+    border: none;
+    border-radius: 5px;
+    cursor: pointer;
+    color: #000;
+}
+</style>
+</head>
+<body>
+
+<div id="ui">
+    <div>Helse:</div>
+    <div id="healthBar"><div id="health"></div></div>
+    <div id="spellCooldown">Magikjøling: 0%</div>
+</div>
+
+<div id="score">Poeng: 0</div>
+<div id="spellIndicator">Velg magi: ILDMAGI (rødt) | FROSTMAGI (blått) | LYNNMAGI (gult)</div>
+<div id="controls">Dra for å bevege deg | Trykk for å skyte magi</div>
+
+<div id="gameOver">
+    <h1>GAME OVER!</h1>
+    <p id="finalScore">Poeng: 0</p>
+    <button onclick="location.reload()">Spill igjen</button>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.min.js"></script>
+
+<script>
+// ===== SCENE SETUP =====
+let scene = new THREE.Scene();
+scene.background = new THREE.Color(0x111122);
+
+let camera = new THREE.PerspectiveCamera(75, window.innerWidth/window.innerHeight, 0.1, 1000);
+camera.position.y = 3;
+camera.position.z = 8;
+
+let renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.shadowMap.enabled = true;
+document.body.appendChild(renderer.domElement);
+
+// ===== LIGHTING =====
+let light = new THREE.DirectionalLight(0xffffff, 0.6);
+light.position.set(10, 20, 10);
+light.castShadow = true;
+scene.add(light);
+
+let ambientLight = new THREE.AmbientLight(0x404040);
+scene.add(ambientLight);
+
+// ===== GROUND =====
+let groundGeo = new THREE.PlaneGeometry(100, 100);
+let groundMat = new THREE.MeshLambertMaterial({color: 0x222233});
+let ground = new THREE.Mesh(groundGeo, groundMat);
+ground.rotation.x = -Math.PI / 2;
+ground.receiveShadow = true;
+scene.add(ground);
+
+// ===== PLAYER WITH MAGIC GLOVES =====
+let playerGroup = new THREE.Group();
+playerGroup.position.y = 0.75;
+scene.add(playerGroup);
+
+// Player body
+let playerGeo = new THREE.BoxGeometry(0.8, 1.5, 0.8);
+let playerMat = new THREE.MeshPhongMaterial({color: 0x00ffff});
+let player = new THREE.Mesh(playerGeo, playerMat);
+player.castShadow = true;
+player.receiveShadow = true;
+playerGroup.add(player);
+
+// Left glove
+let gloveGeo = new THREE.SphereGeometry(0.3, 16, 16);
+let leftGloveMat = new THREE.MeshPhongMaterial({color: 0xff5500, emissive: 0xff5500});
+let leftGlove = new THREE.Mesh(gloveGeo, leftGloveMat);
+leftGlove.position.set(-0.5, 0.5, -0.2);
+leftGlove.castShadow = true;
+playerGroup.add(leftGlove);
+
+// Right glove
+let rightGloveMat = new THREE.MeshPhongMaterial({color: 0x00aaff, emissive: 0x00aaff});
+let rightGlove = new THREE.Mesh(gloveGeo, rightGloveMat);
+rightGlove.position.set(0.5, 0.5, -0.2);
+rightGlove.castShadow = true;
+playerGroup.add(rightGlove);
+
+let playerHealth = 100;
+let playerMaxHealth = 100;
+let score = 0;
+let selectedSpell = 'FIRE'; // FIRE, FROST, LIGHTNING
+let spellCooldown = 0;
+let spellCooldownMax = 500; // milliseconds
+
+// ===== MAGIC TYPES =====
+const SPELL_TYPES = {
+    FIRE: { color: 0xff5500, speed: 0.3, damage: 20, cooldown: 500, range: 30, size: 0.25, name: 'ILDMAGI' },
+    FROST: { color: 0x00aaff, speed: 0.25, damage: 15, cooldown: 700, range: 25, size: 0.2, freezeTime: 100, name: 'FROSTMAGI' },
+    LIGHTNING: { color: 0xffff00, speed: 0.4, damage: 30, cooldown: 900, range: 40, size: 0.15, name: 'LYNNMAGI' }
+};
+
+// ===== SPELLS =====
+let spells = [];
+let enemies = [];
+let particles = [];
+
+// ===== ENEMIES =====
+class Enemy {
+    constructor(x, z) {
+        this.health = 30;
+        this.maxHealth = 30;
+        this.speed = 0.08;
+        
+        let geo = new THREE.BoxGeometry(0.7, 1.2, 0.7);
+        let mat = new THREE.MeshPhongMaterial({color: 0xff3333});
+        this.mesh = new THREE.Mesh(geo, mat);
+        this.mesh.position.set(x, 0.6, z);
+        this.mesh.castShadow = true;
+        this.mesh.receiveShadow = true;
+        scene.add(this.mesh);
+        
+        this.frozen = 0;
+        this.healthBar = this.createHealthBar();
+    }
+    
+    createHealthBar() {
+        let canvas = document.createElement('canvas');
+        canvas.width = 128;
+        canvas.height = 32;
+        let ctx = canvas.getContext('2d');
+        
+        this.updateHealthBarCanvas(ctx);
+        
+        let texture = new THREE.CanvasTexture(canvas);
+        let mat = new THREE.MeshBasicMaterial({map: texture});
+        let geo = new THREE.PlaneGeometry(1, 0.25);
+        let healthBar = new THREE.Mesh(geo, mat);
+        healthBar.position.copy(this.mesh.position);
+        healthBar.position.y = 2;
+        scene.add(healthBar);
+        
+        return {mesh: healthBar, canvas: canvas, ctx: ctx};
+    }
+    
+    updateHealthBarCanvas(ctx) {
+        ctx.fillStyle = '#000000';
+        ctx.fillRect(0, 0, 128, 32);
+        
+        let healthPercent = Math.max(0, this.health / this.maxHealth);
+        let color = healthPercent > 0.5 ? '#00ff00' : healthPercent > 0.25 ? '#ffff00' : '#ff0000';
+        ctx.fillStyle = color;
+        ctx.fillRect(4, 8, 120 * healthPercent, 16);
+        
+        ctx.strokeStyle = '#ffffff';
+        ctx.lineWidth = 2;
+        ctx.strokeRect(4, 8, 120, 16);
+    }
+    
+    update() {
+        if (this.frozen > 0) {
+            this.frozen--;
+            this.mesh.material.color.set(0x0088ff);
+            return;
+        }
+        
+        this.mesh.material.color.set(0xff3333);
+        
+        // Move towards player
+        let dx = playerGroup.position.x - this.mesh.position.x;
+        let dz = playerGroup.position.z - this.mesh.position.z;
+        let dist = Math.sqrt(dx*dx + dz*dz);
+        
+        if (dist > 0.5) {
+            this.mesh.position.x += (dx / dist) * this.speed;
+            this.mesh.position.z += (dz / dist) * this.speed;
+        } else {
+            // Hit player
+            playerHealth -= 5;
+        }
+        
+        // Update health bar
+        this.healthBar.mesh.position.copy(this.mesh.position);
+        this.healthBar.mesh.position.y = 2;
+        let texture = this.healthBar.mesh.material.map;
+        this.updateHealthBarCanvas(this.healthBar.ctx);
+        texture.needsUpdate = true;
+    }
+    
+    takeDamage(damage) {
+        this.health -= damage;
+    }
+    
+    freeze(duration) {
+        this.frozen = duration;
+    }
+    
+    remove() {
+        scene.remove(this.mesh);
+        scene.remove(this.healthBar.mesh);
+    }
+}
+
+function spawnEnemy() {
+    let angle = Math.random() * Math.PI * 2;
+    let distance = 30;
+    let x = Math.cos(angle) * distance;
+    let z = Math.sin(angle) * distance;
+    enemies.push(new Enemy(x, z));
+}
+
+// ===== PARTICLES =====
+class Particle {
+    constructor(x, y, z, color, vx, vy, vz) {
+        let geo = new THREE.SphereGeometry(0.1, 4, 4);
+        let mat = new THREE.MeshBasicMaterial({color: color});
+        this.mesh = new THREE.Mesh(geo, mat);
+        this.mesh.position.set(x, y, z);
+        scene.add(this.mesh);
+        
+        this.velocity = new THREE.Vector3(vx, vy, vz);
+        this.life = 30;
+    }
+    
+    update() {
+        this.mesh.position.add(this.velocity);
+        this.velocity.y -= 0.01; // gravity
+        this.life--;
+        this.mesh.material.opacity = this.life / 30;
+    }
+    
+    remove() {
+        scene.remove(this.mesh);
+    }
+}
+
+function createExplosion(x, y, z, color, count = 10) {
+    for (let i = 0; i < count; i++) {
+        let angle = Math.random() * Math.PI * 2;
+        let speed = Math.random() * 0.3 + 0.1;
+        let vx = Math.cos(angle) * speed;
+        let vz = Math.sin(angle) * speed;
+        let vy = Math.random() * 0.2 + 0.1;
+        particles.push(new Particle(x, y, z, color, vx, vy, vz));
+    }
+}
+
+// ===== MAGIC CASTING =====
+function castSpell(dirX, dirZ) {
+    if (spellCooldown > 0) return;
+    
+    let spellType = selectedSpell;
+    let spellData = SPELL_TYPES[spellType];
+    
+    let spellGeo = new THREE.SphereGeometry(spellData.size, 8, 8);
+    let spellMat = new THREE.MeshPhongMaterial({color: spellData.color, emissive: spellData.color});
+    let spell = new THREE.Mesh(spellGeo, spellMat);
+    
+    spell.position.set(playerGroup.position.x + dirX * 1.5, playerGroup.position.y, playerGroup.position.z + dirZ * 1.5);
+    spell.castShadow = true;
+    
+    let dist = Math.sqrt(dirX*dirX + dirZ*dirZ);
+    spell.direction = new THREE.Vector3(dirX / dist, 0, dirZ / dist);
+    spell.type = spellType;
+    spell.speed = spellData.speed;
+    spell.damage = spellData.damage;
+    spell.range = spellData.range;
+    spell.distanceTraveled = 0;
+    
+    scene.add(spell);
+    spells.push(spell);
+    
+    spellCooldown = spellCooldownMax;
+    
+    // Create particle trail
+    createExplosion(spell.position.x, spell.position.y, spell.position.z, spellData.color, 5);
+    
+    // Update glove colors
+    updateGloveColor();
+}
+
+function updateGloveColor() {
+    let colors = {
+        FIRE: 0xff5500,
+        FROST: 0x00aaff,
+        LIGHTNING: 0xffff00
+    };
+    
+    leftGlove.material.color.set(colors[selectedSpell]);
+    leftGlove.material.emissive.set(colors[selectedSpell]);
+    rightGlove.material.color.set(colors[selectedSpell]);
+    rightGlove.material.emissive.set(colors[selectedSpell]);
+}
+
+// ===== TOUCH CONTROLS =====
+let touchStartX = 0;
+let touchStartY = 0;
+let touchStartTime = 0;
+
+document.addEventListener('touchstart', (e) => {
+    touchStartX = e.touches[0].clientX;
+    touchStartY = e.touches[0].clientY;
+    touchStartTime = Date.now();
+});
+
+document.addEventListener('touchmove', (e) => {
+    e.preventDefault();
+    
+    let touchX = e.touches[0].clientX;
+    let touchY = e.touches[0].clientY;
+    
+    let deltaX = touchX - touchStartX;
+    let deltaY = touchY - touchStartY;
+    
+    let distance = Math.sqrt(deltaX*deltaX + deltaY*deltaY);
+    
+    if (distance > 30) {
+        // Movement
+        let angle = Math.atan2(deltaX, deltaY);
+        playerGroup.position.x += Math.sin(angle) * 0.15;
+        playerGroup.position.z += Math.cos(angle) * 0.15;
+        
+        // Clamp to bounds
+        playerGroup.position.x = Math.max(-40, Math.min(40, playerGroup.position.x));
+        playerGroup.position.z = Math.max(-40, Math.min(40, playerGroup.position.z));
+    }
+});
+
+document.addEventListener('touchend', (e) => {
+    let touchTime = Date.now() - touchStartTime;
+    
+    if (touchTime < 200) {
+        // Tap = shoot magic
+        let touchX = e.changedTouches[0].clientX;
+        let touchY = e.changedTouches[0].clientY;
+        
+        // Use last touch position as direction
+        let dirX = touchX - window.innerWidth/2;
+        let dirZ = touchY - window.innerHeight/2;
+        
+        castSpell(dirX, dirZ);
+    }
+});
+
+// ===== KEYBOARD FALLBACK =====
+document.addEventListener('keydown', (e) => {
+    if (e.key === "ArrowLeft") playerGroup.position.x -= 0.5;
+    if (e.key === "ArrowRight") playerGroup.position.x += 0.5;
+    if (e.key === "ArrowUp") playerGroup.position.z -= 0.5;
+    if (e.key === "ArrowDown") playerGroup.position.z += 0.5;
+    
+    if (e.key === "1") {
+        selectedSpell = "FIRE";
+        updateGloveColor();
+    }
+    if (e.key === "2") {
+        selectedSpell = "FROST";
+        updateGloveColor();
+    }
+    if (e.key === "3") {
+        selectedSpell = "LIGHTNING";
+        updateGloveColor();
+    }
+    
+    if (e.key === " ") {
+        castSpell(0, -1);
+    }
+});
+
+// ===== GAME LOOP =====
+let spawnTimer = 0;
+let spawnRate = 120;
+
+function animate() {
+    requestAnimationFrame(animate);
+    
+    // Spawn enemies
+    spawnTimer++;
+    if (spawnTimer > spawnRate) {
+        spawnEnemy();
+        spawnTimer = 0;
+        spawnRate = Math.max(80, spawnRate - 2); // Gradually increase difficulty
+    }
+    
+    // Update player position for camera
+    camera.position.x = playerGroup.position.x;
+    camera.position.z = playerGroup.position.z + 8;
+    camera.lookAt(playerGroup.position);
+    
+    // Update spells
+    for (let i = spells.length - 1; i >= 0; i--) {
+        let spell = spells[i];
+        spell.position.addScaledVector(spell.direction, spell.speed);
+        spell.distanceTraveled += spell.speed;
+        spell.rotation.x += 0.1;
+        spell.rotation.y += 0.1;
+        
+        // Check range
+        if (spell.distanceTraveled > spell.range) {
+            scene.remove(spell);
+            spells.splice(i, 1);
+            continue;
+        }
+        
+        // Check collision with enemies
+        for (let j = enemies.length - 1; j >= 0; j--) {
+            let enemy = enemies[j];
+            let dist = spell.position.distanceTo(enemy.mesh.position);
+            
+            if (dist < 1) {
+                // Hit!
+                createExplosion(spell.position.x, spell.position.y, spell.position.z, SPELL_TYPES[spell.type].color);
+                
+                enemy.takeDamage(spell.damage);
+                
+                if (spell.type === 'FROST') {
+                    enemy.freeze(SPELL_TYPES.FROST.freezeTime);
+                }
+                
+                if (enemy.health <= 0) {
+                    enemy.remove();
+                    enemies.splice(j, 1);
+                    score += 10;
+                }
+                
+                scene.remove(spell);
+                spells.splice(i, 1);
+                break;
+            }
+        }
+    }
+    
+    // Update enemies
+    for (let i = enemies.length - 1; i >= 0; i--) {
+        enemies[i].update();
+    }
+    
+    // Update particles
+    for (let i = particles.length - 1; i >= 0; i--) {
+        particles[i].update();
+        if (particles[i].life <= 0) {
+            particles[i].remove();
+            particles.splice(i, 1);
+        }
+    }
+    
+    // Update UI
+    spellCooldown = Math.max(0, spellCooldown - 16);
+    let cooldownPercent = Math.round((1 - spellCooldown / spellCooldownMax) * 100);
+    document.getElementById('spellCooldown').textContent = `Magikjøling: ${SPELL_TYPES[selectedSpell].name} ${cooldownPercent}%`;
+    
+    let healthPercent = (playerHealth / playerMaxHealth) * 100;
+    document.getElementById('health').style.width = healthPercent + '%';
+    document.getElementById('score').textContent = `Poeng: ${score}`;
+    
+    // Game over check
+    if (playerHealth <= 0) {
+        document.getElementById('gameOver').style.display = 'block';
+        document.getElementById('finalScore').textContent = `Poeng: ${score}`;
+        renderer.render(scene, camera);
+        return;
+    }
+    
+    // Resize handler
+    if (window.innerWidth !== renderer.domElement.clientWidth) {
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        camera.aspect = window.innerWidth / window.innerHeight;
+        camera.updateProjectionMatrix();
+    }
+    
+    renderer.render(scene, camera);
+}
+
+animate();
+</script>
+
+</body>
+</html>
